@@ -1,8 +1,10 @@
+import random
 import json,yaml,warnings,torch
 import platform
 import psutil
 import os
 import signal
+from pathlib import Path
 
 warnings.filterwarnings("ignore")
 torch.manual_seed(233333)
@@ -19,6 +21,7 @@ for path in site.getsitepackages():
 if(site_packages_roots==[]):site_packages_roots=["%s/runtime/Lib/site-packages" % now_dir]
 #os.environ["OPENBLAS_NUM_THREADS"] = "4"
 os.environ["no_proxy"] = "localhost, 127.0.0.1, ::1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 for site_packages_root in site_packages_roots:
     if os.path.exists(site_packages_root):
         with open("%s/users.pth" % (site_packages_root), "w") as f:
@@ -590,6 +593,16 @@ def close1abc():
         ps1abc=[]
     return "已终止所有一键三连进程", {"__type__": "update", "visible": True}, {"__type__": "update", "visible": False}
 
+def get_random_ref(model_path):
+    model_prefix = model_path.split('-')[0]
+    asr_list = Path(f'/data/tts/sovits/GPT-SoVITS/output/asr_opt/slicer_opt_{model_prefix}.list')
+    with open(asr_list, 'rt', encoding='utf-8') as f:
+        content = f.read().split('\n')
+    line = random.choice(content).split('|')
+    audio_path, language, text = line[0], line[2], line[3]
+    return audio_path, language, text, audio_path
+    
+
 with gr.Blocks(title="GPT-SoVITS WebUI") as app:
     gr.Markdown(
         value=
@@ -742,11 +755,18 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                 with gr.Group():
                     gr.Markdown(value="*请上传并填写参考信息")
                     with gr.Row():
-                        inp_ref = gr.Audio(label="请上传参考音频", type="filepath")
-                        prompt_text = gr.Textbox(label="参考音频的文本", value="")
-                        prompt_language = gr.Dropdown(
-                            label="参考音频的语种", choices=["中文", "英文", "日文"], value="中文"
-                        )
+                        random_btn = gr.Button('随机')
+                        random_audio = gr.Audio(label='音频', autoplay=True)
+                        random_path = gr.Textbox(visible=False)
+                        random_lang = gr.Textbox(label='语言')
+                        random_text = gr.Textbox(label='文本')
+                    random_btn.click(get_random_ref, inputs=[GPT_dropdown],
+                                     outputs=[random_audio, random_lang, random_text, random_path])
+                        # inp_ref = gr.Audio(label="请上传参考音频", type="filepath")
+                        # prompt_text = gr.Textbox(label="参考音频的文本", value="")
+                        # prompt_language = gr.Dropdown(
+                        #     label="参考音频的语种", choices=["中文", "英文", "日文"], value="中文"
+                        # )
                     gr.Markdown(value="*请填写需要合成的目标文本")
                     with gr.Row():
                         text = gr.Textbox(label="需要合成的文本", value="")
@@ -754,30 +774,25 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                             label="需要合成的语种", choices=["中文", "英文", "日文"], value="中文"
                         )
                         inference_button = gr.Button("合成语音", variant="primary")
-                        output = gr.Audio(label="输出的语音")
+                        output = gr.Audio(label="输出的语音", autoplay=True)
                     inference_button.click(
                         p_infer.get_tts_wav,
-                        [inp_ref, prompt_text, prompt_language, text, text_language],
+                        [random_path, random_text, random_lang, text, text_language],
                         [output],
                     )
 
                     gr.Markdown(value="文本切分工具。太长的文本合成出来效果不一定好，所以太长建议先切。合成会根据文本的换行分开合成再拼起来。")
                     with gr.Row():
                         text_inp = gr.Textbox(label="需要合成的切分前文本", value="")
-                        button1 = gr.Button("凑五句一切", variant="primary")
-                        button2 = gr.Button("凑50字一切", variant="primary")
-                        button3 = gr.Button("按中文句号。切", variant="primary")
-                        text_opt = gr.Textbox(label="切分后文本", value="")
+                        button1 = gr.Button("切分", variant="primary")
+                        text_opt = gr.Textbox(label="切分后文本", value="", show_copy_button=True)
                         button1.click(cut1, [text_inp], [text_opt])
-                        button2.click(cut2, [text_inp], [text_opt])
-                        button3.click(cut3, [text_inp], [text_opt])
                     gr.Markdown(value="后续将支持混合语种编码文本输入。")
 
         with gr.TabItem("2-GPT-SoVITS-变声"):gr.Markdown(value="施工中，请静候佳音")
-    app.queue(concurrency_count=511, max_size=1022).launch(
+    app.queue().launch(
         server_name="0.0.0.0",
         inbrowser=True,
         server_port=webui_port_main,
-        share=True,
         quiet=True,
     )

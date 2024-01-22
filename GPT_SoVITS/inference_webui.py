@@ -2,6 +2,12 @@ import os
 import numpy as np
 import librosa,torch
 from feature_extractor import cnhubert
+from scipy.signal import resample
+
+# from sentence_spliter import spliter
+from sentence_spliter.logic_graph import long_short_cuter
+from sentence_spliter.automata.state_machine import StateMachine
+from sentence_spliter.automata.sequence import StrSequence
 
 from module.models import SynthesizerTrn
 from AR.models.t2s_lightning_module import Text2SemanticLightningModule
@@ -152,14 +158,21 @@ class Inference:
         dict_language = {"中文": "zh", "英文": "en", "日文": "ja"}
         t0 = ttime()
         prompt_text = prompt_text.strip("\n")
-        prompt_language, text = prompt_language, text.strip("\n")
+        prompt_language, text = prompt_language.lower(), text.strip("\n")
+        zero_wav = np.zeros(int(self.hps.data.sampling_rate * 0.3), dtype=np.float16 if self.is_half == True else np.float32,)
         with torch.no_grad():
+            # sr, wav = ref_wav_path
+            # wav16k = resample(wav, int(len(wav) * (16000 / sr)))
             wav16k, sr = librosa.load(ref_wav_path, sr=16000)  # 派蒙
             wav16k = torch.from_numpy(wav16k)
+            zero_wav_torch = torch.from_numpy(zero_wav)
             if self.is_half == True:
                 wav16k = wav16k.half().to(self.device)
+                zero_wav_torch = zero_wav_torch.half().to(self.device)
             else:
                 wav16k = wav16k.to(self.device)
+                zero_wav_torch = zero_wav_torch.to(self.device)
+            wav16k = torch.cat([wav16k, zero_wav_torch])
             ssl_content = self.ssl_model.model(wav16k.unsqueeze(0))[
                 "last_hidden_state"
             ].transpose(
@@ -168,7 +181,7 @@ class Inference:
             codes = self.vq_model.extract_latent(ssl_content)
             prompt_semantic = codes[0, 0]
         t1 = ttime()
-        prompt_language = dict_language[prompt_language]
+        # prompt_language = dict_language[prompt_language]
         text_language = dict_language[text_language]
         phones1, word2ph1, norm_text1 = clean_text(prompt_text, prompt_language)
         phones1 = cleaned_text_to_sequence(phones1)
@@ -179,6 +192,7 @@ class Inference:
             dtype=np.float16 if self.is_half == True else np.float32,
         )
         for text in texts:
+            print(text)
             # 解决输入目标文本的空行导致报错的问题
             if (len(text.strip()) == 0):
                 continue
@@ -243,6 +257,8 @@ class Inference:
 
 
 def get_spepc(hps, filename):
+    # sr, wav = filename
+    # audio = resample(wav, int(len(wav) * (hps.data.sampling_rate / sr)))
     audio = load_audio(filename, int(hps.data.sampling_rate))
     audio = torch.FloatTensor(audio)
     audio_norm = audio
@@ -281,16 +297,10 @@ def split(todo_text):
 
 def cut1(inp):
     inp = inp.strip("\n")
-    inps = split(inp)
-    split_idx = list(range(0, len(inps), 5))
-    split_idx[-1] = None
-    if len(split_idx) > 1:
-        opts = []
-        for idx in range(len(split_idx) - 1):
-            opts.append("".join(inps[split_idx[idx] : split_idx[idx + 1]]))
-    else:
-        opts = [inp]
-    return "\n".join(opts)
+    cuter = StateMachine(long_short_cuter(hard_max = 40, max_len= 40, min_len = 5))
+    sequence = cuter.run(StrSequence(inp))
+    out = sequence.sentence_list()
+    return "\n".join(out)
 
 
 def cut2(inp):
