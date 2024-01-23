@@ -11,6 +11,7 @@ A Powerful Few-shot Voice Conversion and Text-to-Speech WebUI.<br><br>
 [![Licence](https://img.shields.io/badge/LICENSE-MIT-green.svg?style=for-the-badge)](https://github.com/RVC-Boss/GPT-SoVITS/blob/main/LICENSE)
 [![Huggingface](https://img.shields.io/badge/🤗%20-Spaces-yellow.svg?style=for-the-badge)](https://huggingface.co/lj1995/GPT-SoVITS/tree/main)
 
+
 [**English**](./README.md) | [**中文简体**](./docs/cn/README.md) | [**日本語**](./docs/ja/README.md)
 
 </div>
@@ -60,7 +61,7 @@ sudo apt-get install python3.9-distutils
 #### Pip Packages
 
 ```bash
-pip install torch numpy scipy tensorboard librosa==0.9.2 numba==0.56.4 pytorch-lightning gradio==3.14.0 ffmpeg-python onnxruntime tqdm cn2an pypinyin pyopenjtalk g2p_en chardet
+pip install torch numpy scipy tensorboard librosa==0.9.2 numba==0.56.4 pytorch-lightning gradio==3.14.0 ffmpeg-python onnxruntime tqdm cn2an pypinyin pyopenjtalk g2p_en chardet transformers jieba
 ```
 
 #### Additional Requirements
@@ -140,7 +141,7 @@ D:\GPT-SoVITS\xxx/xxx.wav|xxx|en|I like playing Genshin.
    - [ ] Improve English and Japanese text frontend.
    - [ ] Develop tiny and larger-sized TTS models.
    - [ ] Colab scripts.
-   - [ ] Expand training dataset (2k -> 10k).
+   - [ ] Try expand training dataset (2k hours -> 10k hours).
    - [ ] better sovits base model (enhanced audio quality)
    - [ ] model mix
 
