@@ -20,4 +20,3 @@ transformers
 chardet
 PyYAML
 psutil
-jieba
