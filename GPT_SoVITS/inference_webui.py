@@ -1,3 +1,4 @@
+import re
 import os
 import numpy as np
 import librosa,torch
@@ -18,6 +19,7 @@ from time import time as ttime
 from module.mel_processing import spectrogram_torch
 from my_utils import load_audio
 
+splits = { "，", "。", "？", "！", ",", ".", "?", "!", "~", ":", "：", "—", "…", '_', '-'}  # 不考虑省略号
 
 class DictToAttrRecursive(dict):
     def __init__(self, input_dict):
@@ -45,6 +47,56 @@ class DictToAttrRecursive(dict):
             del self[item]
         except KeyError:
             raise AttributeError(f"Attribute {item} not found")
+
+
+def splite_en_inf(sentence, language):
+    pattern = re.compile(r'[a-zA-Z. ]+')
+    textlist = []
+    langlist = []
+    pos = 0
+    for match in pattern.finditer(sentence):
+        start, end = match.span()
+        if start > pos:
+            textlist.append(sentence[pos:start])
+            langlist.append(language)
+        textlist.append(sentence[start:end])
+        langlist.append("en")
+        pos = end
+    if pos < len(sentence):
+        textlist.append(sentence[pos:])
+        langlist.append(language)
+
+    return textlist, langlist
+
+
+def clean_text_inf(text, language):
+    phones, word2ph, norm_text = clean_text(text, language)
+    phones = cleaned_text_to_sequence(phones)
+
+    return phones, word2ph, norm_text
+
+
+def nonen_clean_text_inf(text, language):
+    textlist, langlist = splite_en_inf(text, language)
+    phones_list = []
+    word2ph_list = []
+    norm_text_list = []
+    for i in range(len(textlist)):
+        lang = langlist[i]
+        phones, word2ph, norm_text = clean_text_inf(textlist[i], lang)
+        phones_list.append(phones)
+        if lang == "en" or "ja":
+            pass
+        else:
+            word2ph_list.append(word2ph)
+        norm_text_list.append(norm_text)
+    print(word2ph_list)
+    phones = sum(phones_list, [])
+    word2ph = sum(word2ph_list, [])
+    norm_text = ' '.join(norm_text_list)
+
+    return phones, word2ph, norm_text
+
 
 
 class Inference:
@@ -151,6 +203,33 @@ class Inference:
         return phone_level_feature.T
 
 
+    def get_bert_inf(self, phones, word2ph, norm_text, language):
+        if language == "zh":
+            bert = self.get_bert_feature(norm_text, word2ph).to(self.device)
+        else:
+            bert = torch.zeros(
+                (1024, len(phones)),
+                dtype=torch.float16 if self.is_half == True else torch.float32,
+            ).to(self.device)
+
+        return bert
+
+
+    def nonen_get_bert_inf(self, text, language):
+        textlist, langlist = splite_en_inf(text, language)
+        print(textlist)
+        print(langlist)
+        bert_list = []
+        for i in range(len(textlist)):
+            text = textlist[i]
+            lang = langlist[i]
+            phones, word2ph, norm_text = clean_text_inf(text, lang)
+            bert = self.get_bert_inf(phones, word2ph, norm_text, lang)
+            bert_list.append(bert)
+        bert = torch.cat(bert_list, dim=1)
+
+        return bert
+
     def get_tts_wav(self, ref_wav_path, prompt_text, prompt_language, text, text_language):
         if not self.model_loaded:
             return 
@@ -181,34 +260,45 @@ class Inference:
             codes = self.vq_model.extract_latent(ssl_content)
             prompt_semantic = codes[0, 0]
         t1 = ttime()
-        # prompt_language = dict_language[prompt_language]
+
         text_language = dict_language[text_language]
-        phones1, word2ph1, norm_text1 = clean_text(prompt_text, prompt_language)
-        phones1 = cleaned_text_to_sequence(phones1)
+
+        if prompt_language == "en":
+            phones1, word2ph1, norm_text1 = clean_text_inf(prompt_text, prompt_language)
+        else:
+            phones1, word2ph1, norm_text1 = nonen_clean_text_inf(prompt_text, prompt_language)
+
+
+        if(text[-1] not in splits):
+            if text_language!="en":
+                text += "。"
+            else:
+                text += '.'
         texts = text.split("\n")
+
         audio_opt = []
-        zero_wav = np.zeros(
-            int(self.hps.data.sampling_rate * 0.3),
-            dtype=np.float16 if self.is_half == True else np.float32,
-        )
+        if prompt_language == "en":
+            bert1 = self.get_bert_inf(phones1, word2ph1, norm_text1, prompt_language)
+        else:
+            bert1 = self.nonen_get_bert_inf(prompt_text, prompt_language)
+
         for text in texts:
             print(text)
             # 解决输入目标文本的空行导致报错的问题
+            if text in splits:
+                continue
             if (len(text.strip()) == 0):
                 continue
-            phones2, word2ph2, norm_text2 = clean_text(text, text_language)
-            phones2 = cleaned_text_to_sequence(phones2)
-            if prompt_language == "zh":
-                bert1 = self.get_bert_feature(norm_text1, word2ph1).to(self.device)
+            if text_language == "en":
+                phones2, word2ph2, norm_text2 = clean_text_inf(text, text_language)
             else:
-                bert1 = torch.zeros(
-                    (1024, len(phones1)),
-                    dtype=torch.float16 if self.is_half == True else torch.float32,
-                ).to(self.device)
-            if text_language == "zh":
-                bert2 = self.get_bert_feature(norm_text2, word2ph2).to(self.device)
+                phones2, word2ph2, norm_text2 = nonen_clean_text_inf(text, text_language)
+            
+            if text_language == "en":
+                bert2 = self.get_bert_inf(phones2, word2ph2, norm_text2, text_language)
             else:
-                bert2 = torch.zeros((1024, len(phones2))).to(bert1)
+                bert2 = self.nonen_get_bert_inf(text, text_language)
+
             bert = torch.cat([bert1, bert2], 1)
 
             all_phoneme_ids = torch.LongTensor(phones1 + phones2).to(self.device).unsqueeze(0)
@@ -276,7 +366,6 @@ def get_spepc(hps, filename):
 
 
 def split(todo_text):
-    splits = { "，", "。", "？", "！", ",", ".", "?", "!", "~", ":", "：", "—", "…", }  # 不考虑省略号
     todo_text = todo_text.replace("……", "。").replace("——", "，")
     if todo_text[-1] not in splits:
         todo_text += "。"
