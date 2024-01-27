@@ -593,13 +593,12 @@ def close1abc():
         ps1abc=[]
     return "已终止所有一键三连进程", {"__type__": "update", "visible": True}, {"__type__": "update", "visible": False}
 
-def get_random_ref(model_path):
-    model_prefix = model_path.split('-')[0]
-    asr_list = Path(f'/data/tts/sovits/GPT-SoVITS/output/asr_opt/slicer_opt_{model_prefix}.list')
-    with open(asr_list, 'rt', encoding='utf-8') as f:
-        content = f.read().split('\n')
+def get_random_ref(list_file, wav_dir):
+    with open(list_file, 'rt', encoding='utf-8') as f:
+        content = f.read().strip().split('\n')
     line = random.choice(content).split('|')
     audio_path, language, text = line[0], line[2], line[3]
+    audio_path = os.path.join(wav_dir, Path(audio_path).name)
     return audio_path, language, text, audio_path
     
 
@@ -663,16 +662,16 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                 pretrained_s2G = gr.Textbox(label="预训练的SoVITS-G模型路径", value="GPT_SoVITS/pretrained_models/s2G488k.pth", interactive=True)
                 pretrained_s2D = gr.Textbox(label="预训练的SoVITS-D模型路径", value="GPT_SoVITS/pretrained_models/s2D488k.pth", interactive=True)
                 pretrained_s1 = gr.Textbox(label="预训练的GPT模型路径", value="GPT_SoVITS/pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt", interactive=True)
+            with gr.Row():
+                inp_text = gr.Textbox(label="*文本标注文件",value=r"D:\RVC1006\GPT-SoVITS\raw\xxx.list",interactive=True)
+                inp_wav_dir = gr.Textbox(
+                    label="*训练集音频文件目录",
+                    # value=r"D:\RVC1006\GPT-SoVITS\raw\xxx",
+                    interactive=True,
+                    placeholder="训练集音频文件目录 拼接 list文件里波形对应的文件名。"
+                )
             with gr.TabItem("1A-训练集格式化工具"):
                 gr.Markdown(value="输出logs/实验名目录下应有23456开头的文件和文件夹")
-                with gr.Row():
-                    inp_text = gr.Textbox(label="*文本标注文件",value=r"D:\RVC1006\GPT-SoVITS\raw\xxx.list",interactive=True)
-                    inp_wav_dir = gr.Textbox(
-                        label="*训练集音频文件目录",
-                        # value=r"D:\RVC1006\GPT-SoVITS\raw\xxx",
-                        interactive=True,
-                        placeholder="训练集音频文件目录 拼接 list文件里波形对应的文件名。"
-                    )
                 gr.Markdown(value="1Aa-文本内容")
                 with gr.Row():
                     gpu_numbers1a = gr.Textbox(label="GPU卡号以-分割，每个卡号一个进程",value="%s-%s"%(gpus,gpus),interactive=True)
@@ -760,13 +759,8 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                         random_path = gr.Textbox(visible=False)
                         random_lang = gr.Textbox(label='语言')
                         random_text = gr.Textbox(label='文本')
-                    random_btn.click(get_random_ref, inputs=[GPT_dropdown],
+                    random_btn.click(get_random_ref, inputs=[inp_text, inp_wav_dir],
                                      outputs=[random_audio, random_lang, random_text, random_path])
-                        # inp_ref = gr.Audio(label="请上传参考音频", type="filepath")
-                        # prompt_text = gr.Textbox(label="参考音频的文本", value="")
-                        # prompt_language = gr.Dropdown(
-                        #     label="参考音频的语种", choices=["中文", "英文", "日文"], value="中文"
-                        # )
                     gr.Markdown(value="*请填写需要合成的目标文本")
                     with gr.Row():
                         text = gr.Textbox(label="需要合成的文本", value="")
@@ -789,7 +783,6 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                         button1.click(cut1, [text_inp], [text_opt])
                     gr.Markdown(value="后续将支持混合语种编码文本输入。")
 
-        with gr.TabItem("2-GPT-SoVITS-变声"):gr.Markdown(value="施工中，请静候佳音")
     app.queue().launch(
         server_name="0.0.0.0",
         inbrowser=True,
