@@ -108,13 +108,13 @@ class Inference:
         self.SoVITS_weight_root = SoVITS_weight_root
 
 
-    def update_envs(self, gpt_path, sovits_path, cnhubert_base_path, bert_path):
+    def update_envs(self, gpt_path, sovits_path):
         self.gpt_path =  os.path.join(self.GPT_weight_root, gpt_path)
         self.sovits_path = os.path.join(self.SoVITS_weight_root, sovits_path)
-        self.cnhubert_base_path = cnhubert_base_path
-        self.bert_path = bert_path
+        self.cnhubert_base_path = 'GPT_SoVITS/pretrained_models/chinese-hubert-base'
+        self.bert_path = 'GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large'
 
-        cnhubert.cnhubert_base_path=cnhubert_base_path
+        cnhubert.cnhubert_base_path = 'GPT_SoVITS/pretrained_models/chinese-hubert-base'
 
         yield self.load_model()
     

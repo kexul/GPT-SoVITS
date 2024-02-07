@@ -27,5 +27,6 @@ for name in os.listdir(dir):
 
 opt_dir="output/asr_opt"
 os.makedirs(opt_dir,exist_ok=True)
-with open("%s/%s.list"%(opt_dir,opt_name),"w",encoding="utf-8")as f:f.write("\n".join(opt))
+with open("%s/%s.list"%(opt_dir,opt_name),"w",encoding="utf-8")as f:
+    f.write("\n".join(opt))
 
