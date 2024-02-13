@@ -68,16 +68,17 @@ else:
     default_batch_size = 1
 gpus = "-".join([i[0] for i in gpu_infos])
 
-pretrained_sovits_name="GPT_SoVITS/pretrained_models/s2G488k.pth"
-pretrained_gpt_name="GPT_SoVITS/pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt"
+# pretrained_sovits_name="GPT_SoVITS/pretrained_models/s2G488k.pth"
+# pretrained_gpt_name="GPT_SoVITS/pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt"
 def get_weights_names():
-    SoVITS_names = [pretrained_sovits_name]
+    SoVITS_names = []
     for name in os.listdir(SoVITS_weight_root):
         if name.endswith(".pth"):SoVITS_names.append(name)
-    GPT_names = [pretrained_gpt_name]
+    GPT_names = []
     for name in os.listdir(GPT_weight_root):
         if name.endswith(".ckpt"): GPT_names.append(name)
     return SoVITS_names,GPT_names
+
 SoVITS_weight_root="SoVITS_weights"
 GPT_weight_root="GPT_weights"
 os.makedirs(SoVITS_weight_root,exist_ok=True)
@@ -606,7 +607,13 @@ def get_exp():
     exp_names = set()
     for item in Path('GPT_weights').glob('*.ckpt'):
         exp_names.add(item.stem.split('-')[0])
-    return list(exp_names)
+    exp_names = list(exp_names)
+    return exp_names
+
+def get_exp_gradio():
+    exps = get_exp()
+    return gr.Dropdown(choices=exps, value=exps[0], interactive=True, allow_custom_value=True)
+
 
 def update_exp(project_name):
     project_config_path = f'TEMP/{project_name}.json'
@@ -621,6 +628,12 @@ def update_exp(project_name):
     gpt_weights = str(natsorted([x.name for x in Path('GPT_weights').glob(f'{project_name}*.ckpt')])[-1])
     sovits_weights = str(natsorted([x.name for x in Path('SoVITS_weights').glob(f'{project_name}*.pth')])[-1])
     return asr_txt, wav_dir, gpt_weights, sovits_weights
+
+def save_exp(project_name, asr_txt, wav_dir):
+    project_config = {'asr_txt':asr_txt, 'wav_dir':wav_dir}
+    project_config_path = f'TEMP/{project_name}.json'
+    with open(project_config_path, 'wt') as f:
+        project_config = json.dump(project_config, f)
         
 
 with gr.Blocks(title="GPT-SoVITS WebUI") as app:
@@ -629,18 +642,21 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
             with gr.Row():
                 exps = get_exp()
                 exp_name = gr.Dropdown(label="*实验/模型名", choices=exps, value=exps[0], interactive=True, allow_custom_value=True)
-                gpu_info = gr.Textbox(label="显卡信息", value=gpu_info, visible=True, interactive=False)
-                pretrained_s2G = gr.Textbox(label="预训练的SoVITS-G模型路径", value="GPT_SoVITS/pretrained_models/s2G488k.pth", interactive=True)
-                pretrained_s2D = gr.Textbox(label="预训练的SoVITS-D模型路径", value="GPT_SoVITS/pretrained_models/s2D488k.pth", interactive=True)
-                pretrained_s1 = gr.Textbox(label="预训练的GPT模型路径", value="GPT_SoVITS/pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt", interactive=True)
+                # gpu_info = gr.Textbox(label="显卡信息", value=gpu_info, visible=True, interactive=False)
+                update_exp_name = gr.Button('刷新实验名')
+                update_exp_name.click(get_exp_gradio, outputs=exp_name)
+                pretrained_s2G = gr.Textbox(label="预训练的SoVITS-G模型路径", value="GPT_SoVITS/pretrained_models/s2G488k.pth", interactive=True, visible=False)
+                pretrained_s2D = gr.Textbox(label="预训练的SoVITS-D模型路径", value="GPT_SoVITS/pretrained_models/s2D488k.pth", interactive=True, visible=False)
+                pretrained_s1 = gr.Textbox(label="预训练的GPT模型路径", value="GPT_SoVITS/pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt", interactive=True, visible=False)
             with gr.Row():
-                inp_text = gr.Textbox(label="*文本标注文件",value=r"D:\RVC1006\GPT-SoVITS\raw\xxx.list",interactive=True)
-                inp_wav_dir = gr.Textbox(label="*训练集音频文件目录", interactive=True)
+                asr_txt, wav_dir, gpt_weights, sovits_weights = update_exp(exps[0])
+                inp_text = gr.Textbox(label="*文本标注文件",value=asr_txt,interactive=True)
+                inp_wav_dir = gr.Textbox(label="*训练集音频文件目录",value=wav_dir, interactive=True)
             with gr.TabItem("1C-推理"):
                 gr.Markdown(value="选择训练完存放在SoVITS_weights和GPT_weights下的模型。默认的一个是底模，体验5秒Zero Shot TTS用。")
                 with gr.Row():
-                    GPT_dropdown = gr.Dropdown(label="*GPT模型列表", choices=sorted(GPT_names),value=pretrained_gpt_name)
-                    SoVITS_dropdown = gr.Dropdown(label="*SoVITS模型列表", choices=sorted(SoVITS_names),value=pretrained_sovits_name)
+                    GPT_dropdown = gr.Dropdown(label="*GPT模型列表", choices=sorted(GPT_names),value=gpt_weights)
+                    SoVITS_dropdown = gr.Dropdown(label="*SoVITS模型列表", choices=sorted(SoVITS_names),value=sovits_weights)
                     gpu_number_1C=gr.Textbox(label="GPU卡号,只能填1个整数", value=gpus, interactive=True)
                     refresh_button = gr.Button("刷新模型路径", variant="primary")
                     refresh_button.click(fn=change_choices,inputs=[],outputs=[SoVITS_dropdown,GPT_dropdown])
@@ -663,28 +679,26 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                     random_btn.click(get_random_ref, inputs=[inp_text, inp_wav_dir],
                                      outputs=[random_audio, random_lang, random_text, random_path])
                     gr.Markdown(value="*请填写需要合成的目标文本")
+                    text = gr.Textbox(label="需要合成的文本", value="")
                     with gr.Row():
-                        text = gr.Textbox(label="需要合成的文本", value="")
+                        top_k = gr.Slider(minimum=1, maximum=100, step=1, label='top_k', value=5)
+                        top_p = gr.Slider(minimum=0, maximum=1, step=0.05, label='top_p', value=1)
+                        temp = gr.Slider(minimum=0, maximum=1, step=0.05, label='temperature', value=1)
+                    with gr.Row():
                         text_language = gr.Dropdown(
                             label="需要合成的语种", choices=["中文", "英文", "日文"], value="中文"
                         )
+                        button1 = gr.Button("切分", variant="primary")
                         inference_button = gr.Button("合成语音", variant="primary")
-                        output = gr.Audio(label="输出的语音", autoplay=True)
+                    output = gr.Audio(label="输出的语音", autoplay=True)
+                    button1.click(cut1, [text], [text])
                     inference_button.click(
                         p_infer.get_tts_wav,
-                        [random_path, random_text, random_lang, text, text_language],
+                        [random_path, random_text, random_lang, text, text_language, top_k, top_p, temp],
                         [output],
                     )
-
-                    gr.Markdown(value="文本切分工具。太长的文本合成出来效果不一定好，所以太长建议先切。合成会根据文本的换行分开合成再拼起来。")
-                    with gr.Row():
-                        text_inp = gr.Textbox(label="需要合成的切分前文本", value="")
-                        button1 = gr.Button("切分", variant="primary")
-                        text_opt = gr.Textbox(label="切分后文本", value="", show_copy_button=True)
-                        button1.click(cut1, [text_inp], [text_opt])
-                    gr.Markdown(value="后续将支持混合语种编码文本输入。")
-
-            exp_name.select(update_exp, inputs=[exp_name], outputs=[inp_text, inp_wav_dir, GPT_dropdown, SoVITS_dropdown])
+                    inference_button.click(save_exp, inputs=[exp_name, inp_text, inp_wav_dir])
+                exp_name.select(update_exp, inputs=[exp_name], outputs=[inp_text, inp_wav_dir, GPT_dropdown, SoVITS_dropdown])
 
             with gr.TabItem("1A-训练集格式化工具"):
                 gr.Markdown(value="输出logs/实验名目录下应有23456开头的文件和文件夹")
@@ -737,7 +751,7 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                     info1Ba=gr.Textbox(label="SoVITS训练进程输出信息")
                 gr.Markdown(value="1Bb-GPT训练。用于分享的模型文件输出在GPT_weights下。")
                 with gr.Row():
-                    batch_size1Bb = gr.Slider(minimum=1,maximum=40,step=1,label=i18n("每张显卡的batch_size"),value=default_batch_size,interactive=True)
+                    batch_size1Bb = gr.Slider(minimum=1,maximum=40,step=1,label=i18n("每张显卡的batch_size"),value=default_batch_size//2,interactive=True)
                     total_epoch1Bb = gr.Slider(minimum=2,maximum=100,step=1,label=i18n("总训练轮数total_epoch"),value=15,interactive=True)
                     if_save_latest1Bb = gr.Checkbox(label=i18n("是否仅保存最新的ckpt文件以节省硬盘空间"), value=True, interactive=True, show_label=True)
                     if_save_every_weights1Bb = gr.Checkbox(label=i18n("是否在每次保存时间点将最终小模型保存至weights文件夹"), value=True, interactive=True, show_label=True)

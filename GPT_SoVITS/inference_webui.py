@@ -230,7 +230,7 @@ class Inference:
 
         return bert
 
-    def get_tts_wav(self, ref_wav_path, prompt_text, prompt_language, text, text_language):
+    def get_tts_wav(self, ref_wav_path, prompt_text, prompt_language, text, text_language, top_k=20, top_p=0.6, temperature=0.6):
         if not self.model_loaded:
             return 
         hz = 50
@@ -313,8 +313,9 @@ class Inference:
                     all_phoneme_len,
                     prompt,
                     bert,
-                    # prompt_phone_len=ph_offset,
-                    top_k=self.config["inference"]["top_k"],
+                    top_k = top_k,
+                    top_p = top_p,
+                    temperature = temperature,
                     early_stop_num=hz * self.config["data"]["max_sec"]
                 )
             t3 = ttime()

@@ -1,26 +1,21 @@
 # -*- coding:utf-8 -*-
 
-from modelscope.pipelines import pipeline
-from modelscope.utils.constant import Tasks
 import sys,os,traceback
 dir=sys.argv[1]
-# opt_name=dir.split("\\")[-1].split("/")[-1]
 opt_name=os.path.basename(dir)
 
-path_asr="damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
-path_vad="damo/speech_fsmn_vad_zh-cn-16k-common-pytorch"
-path_punc="damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch"
-inference_pipeline = pipeline(
-    task=Tasks.auto_speech_recognition,
-    model=path_asr,
-    vad_model=path_vad,
-    punc_model=path_punc,
-)
+from funasr import AutoModel
+
+model = AutoModel(model="paraformer-zh", model_revision="v2.0.4",
+                  vad_model="fsmn-vad", vad_model_revision="v2.0.4",
+                  punc_model="ct-punc-c", punc_model_revision="v2.0.4",
+                  )
+
 
 opt=[]
 for name in os.listdir(dir):
     try:
-        text = inference_pipeline(audio_in="%s/%s"%(dir,name))["text"]
+        text = model.generate(input="%s/%s"%(dir,name))[0]["text"]
         opt.append("%s/%s|%s|ZH|%s"%(dir,name,opt_name,text))
     except:
         print(traceback.format_exc())
