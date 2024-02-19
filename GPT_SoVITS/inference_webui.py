@@ -230,7 +230,7 @@ class Inference:
 
         return bert
 
-    def get_tts_wav(self, ref_wav_path, prompt_text, prompt_language, text, text_language, top_k=20, top_p=0.6, temperature=0.6):
+    def get_tts_wav(self, ref_wav_path, prompt_text, prompt_language, text, text_language, top_k, top_p, temperature):
         if not self.model_loaded:
             return 
         hz = 50
