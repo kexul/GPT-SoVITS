@@ -46,20 +46,26 @@ from multiprocessing import cpu_count
 from GPT_SoVITS.inference_webui import Inference, cut1, cut2, cut3
 n_cpu=cpu_count()
            
-# 判断是否有能用来训练和加速推理的N卡
 ngpu = torch.cuda.device_count()
 gpu_infos = []
 mem = []
 if_gpu_ok = False
 
+# 判断是否有能用来训练和加速推理的N卡
 if torch.cuda.is_available() or ngpu != 0:
     for i in range(ngpu):
         gpu_name = torch.cuda.get_device_name(i)
-        if any(value in gpu_name.upper()for value in ["10","16","20","30","40","A2","A3","A4","P4","A50","500","A60","70","80","90","M4","T4","TITAN","L"]):
+        if any(value in gpu_name.upper()for value in ["10","16","20","30","40","A2","A3","A4","P4","A50","500","A60","70","80","90","M4","T4","TITAN","L4","4060"]):
             # A10#A100#V100#A40#P40#M40#K80#A4500
             if_gpu_ok = True  # 至少有一张能用的N卡
             gpu_infos.append("%s\t%s" % (i, gpu_name))
             mem.append(int(torch.cuda.get_device_properties(i).total_memory/ 1024/ 1024/ 1024+ 0.4))
+# 判断是否支持mps加速
+if torch.backends.mps.is_available():
+    if_gpu_ok = True
+    gpu_infos.append("%s\t%s" % ("0", "Apple GPU"))
+    mem.append(psutil.virtual_memory().total/ 1024 / 1024 / 1024) # 实测使用系统内存作为显存不会爆显存
+
 if if_gpu_ok and len(gpu_infos) > 0:
     gpu_info = "\n".join(gpu_infos)
     default_batch_size = min(mem) // 2
@@ -85,9 +91,16 @@ os.makedirs(SoVITS_weight_root,exist_ok=True)
 os.makedirs(GPT_weight_root,exist_ok=True)
 SoVITS_names,GPT_names = get_weights_names()
 
+def custom_sort_key(s):
+    # 使用正则表达式提取字符串中的数字部分和非数字部分
+    parts = re.split('(\d+)', s)
+    # 将数字部分转换为整数，非数字部分保持不变
+    parts = [int(part) if part.isdigit() else part for part in parts]
+    return parts
+
 def change_choices():
     SoVITS_names, GPT_names = get_weights_names()
-    return {"choices": sorted(SoVITS_names), "__type__": "update"}, {"choices": sorted(GPT_names), "__type__": "update"}
+    return {"choices": sorted(SoVITS_names,key=custom_sort_key), "__type__": "update"}, {"choices": sorted(GPT_names,key=custom_sort_key), "__type__": "update"}
 
 p_label=None
 p_uvr5=None
@@ -126,6 +139,7 @@ def kill_process(pid):
 def change_label(if_label,path_list):
     global p_label
     if(if_label==True and p_label==None):
+        path_list=my_utils.clean_path(path_list)
         cmd = '"%s" tools/subfix_webui.py --load_list "%s" --webui_port %s'%(python_exec,path_list,webui_port_subfix)
         yield "打标工具WebUI已开启"
         print(cmd)
@@ -166,11 +180,18 @@ def change_tts_inference(if_tts,bert_path,cnhubert_base_path,gpu_number,gpt_path
         p_tts_inference=None
         yield "TTS推理进程已关闭"
 
-
-def open_asr(asr_inp_dir):
+from tools.asr.config import asr_dict
+def open_asr(asr_inp_dir, asr_opt_dir, asr_model, asr_model_size, asr_lang):
     global p_asr
     if(p_asr==None):
-        cmd = '"%s" tools/damo_asr/cmd-asr.py "%s"'%(python_exec,asr_inp_dir)
+        asr_inp_dir=my_utils.clean_path(asr_inp_dir)
+        cmd = f'"{python_exec}" tools/asr/{asr_dict[asr_model]["path"]}'
+        cmd += f' -i "{asr_inp_dir}"'
+        cmd += f' -o "{asr_opt_dir}"'
+        cmd += f' -s {asr_model_size}'
+        cmd += f' -l {asr_lang}'
+        cmd += " -p %s"%("float16"if is_half==True else "float32")
+
         yield "ASR任务开启：%s"%cmd,{"__type__":"update","visible":False},{"__type__":"update","visible":True}
         print(cmd)
         p_asr = Popen(cmd, shell=True)
@@ -179,6 +200,7 @@ def open_asr(asr_inp_dir):
         yield f"output/asr_opt/{os.path.basename(asr_inp_dir)}.list",{"__type__":"update","visible":True},{"__type__":"update","visible":False}
     else:
         yield "已有正在进行的ASR任务，需先终止才能开启下一次任务",{"__type__":"update","visible":False},{"__type__":"update","visible":True}
+        # return None
 
 def close_asr():
     global p_asr
@@ -196,6 +218,9 @@ def open1Ba(batch_size,total_epoch,exp_name,text_low_lr_rate,if_save_latest,if_s
             data=json.loads(data)
         s2_dir="%s/%s"%(exp_root,exp_name)
         os.makedirs("%s/logs_s2"%(s2_dir),exist_ok=True)
+        if(is_half==False):
+            data["train"]["fp16_run"]=False
+            batch_size=max(1,batch_size//2)
         data["train"]["batch_size"]=batch_size
         data["train"]["epochs"]=total_epoch
         data["train"]["text_low_lr_rate"]=text_low_lr_rate
@@ -208,7 +233,7 @@ def open1Ba(batch_size,total_epoch,exp_name,text_low_lr_rate,if_save_latest,if_s
         data["data"]["exp_dir"]=data["s2_ckpt_dir"]=s2_dir
         data["save_weight_dir"]=SoVITS_weight_root
         data["name"]=exp_name
-        tmp_config_path="TEMP/tmp_s2.json"
+        tmp_config_path="%s/tmp_s2.json"%tmp
         with open(tmp_config_path,"w")as f:f.write(json.dumps(data))
 
         cmd = '"%s" GPT_SoVITS/s2_train.py --config "%s"'%(python_exec,tmp_config_path)
@@ -229,7 +254,7 @@ def close1Ba():
     return "已终止SoVITS训练",{"__type__":"update","visible":True},{"__type__":"update","visible":False}
 
 p_train_GPT=None
-def open1Bb(batch_size,total_epoch,exp_name,if_save_latest,if_save_every_weights,save_every_epoch,gpu_numbers,pretrained_s1):
+def open1Bb(batch_size,total_epoch,exp_name,if_dpo,if_save_latest,if_save_every_weights,save_every_epoch,gpu_numbers,pretrained_s1):
     global p_train_GPT
     if(p_train_GPT==None):
         with open("GPT_SoVITS/configs/s1longer.yaml")as f:
@@ -237,12 +262,16 @@ def open1Bb(batch_size,total_epoch,exp_name,if_save_latest,if_save_every_weights
             data=yaml.load(data, Loader=yaml.FullLoader)
         s1_dir="%s/%s"%(exp_root,exp_name)
         os.makedirs("%s/logs_s1"%(s1_dir),exist_ok=True)
+        if(is_half==False):
+            data["train"]["precision"]="32"
+            batch_size = max(1, batch_size // 2)
         data["train"]["batch_size"]=batch_size
         data["train"]["epochs"]=total_epoch
         data["pretrained_s1"]=pretrained_s1
         data["train"]["save_every_n_epoch"]=save_every_epoch
         data["train"]["if_save_every_weights"]=if_save_every_weights
         data["train"]["if_save_latest"]=if_save_latest
+        data["train"]["if_dpo"]=if_dpo
         data["train"]["half_weights_save_dir"]=GPT_weight_root
         data["train"]["exp_name"]=exp_name
         data["train_semantic_path"]="%s/6-name2semantic.tsv"%s1_dir
@@ -251,7 +280,7 @@ def open1Bb(batch_size,total_epoch,exp_name,if_save_latest,if_save_every_weights
 
         os.environ["_CUDA_VISIBLE_DEVICES"]=gpu_numbers.replace("-",",")
         os.environ["hz"]="25hz"
-        tmp_config_path="TEMP/tmp_s1.yaml"
+        tmp_config_path="%s/tmp_s1.yaml"%tmp
         with open(tmp_config_path, "w") as f:f.write(yaml.dump(data, default_flow_style=False))
         # cmd = '"%s" GPT_SoVITS/s1_train.py --config_file "%s" --train_semantic_path "%s/6-name2semantic.tsv" --train_phoneme_path "%s/2-name2text.txt" --output_dir "%s/logs_s1"'%(python_exec,tmp_config_path,s1_dir,s1_dir,s1_dir)
         cmd = '"%s" GPT_SoVITS/s1_train.py --config_file "%s" '%(python_exec,tmp_config_path)
@@ -310,6 +339,8 @@ def close_slice():
 ps1a=[]
 def open1a(inp_text,inp_wav_dir,exp_name,gpu_numbers,bert_pretrained_dir):
     global ps1a
+    inp_text = my_utils.clean_path(inp_text)
+    inp_wav_dir = my_utils.clean_path(inp_wav_dir)
     if (ps1a == []):
         opt_dir="%s/%s"%(exp_root,exp_name)
         config={
@@ -330,7 +361,7 @@ def open1a(inp_text,inp_wav_dir,exp_name,gpu_numbers,bert_pretrained_dir):
                     "is_half": str(is_half)
                 }
             )
-            os.environ.update(config)#
+            os.environ.update(config)
             cmd = '"%s" GPT_SoVITS/prepare_datasets/1-get-text.py'%python_exec
             print(cmd)
             p = Popen(cmd, shell=True)
@@ -366,6 +397,8 @@ def close1a():
 ps1b=[]
 def open1b(inp_text,inp_wav_dir,exp_name,gpu_numbers,ssl_pretrained_dir):
     global ps1b
+    inp_text = my_utils.clean_path(inp_text)
+    inp_wav_dir = my_utils.clean_path(inp_wav_dir)
     if (ps1b == []):
         config={
             "inp_text":inp_text,
@@ -412,6 +445,7 @@ def close1b():
 ps1c=[]
 def open1c(inp_text,exp_name,gpu_numbers,pretrained_s2G_path):
     global ps1c
+    inp_text = my_utils.clean_path(inp_text)
     if (ps1c == []):
         opt_dir="%s/%s"%(exp_root,exp_name)
         config={
@@ -468,6 +502,8 @@ def close1c():
 ps1abc=[]
 def open1abc(inp_text,inp_wav_dir,exp_name,gpu_numbers1a,gpu_numbers1Ba,gpu_numbers1c,bert_pretrained_dir,ssl_pretrained_dir,pretrained_s2G_path):
     global ps1abc
+    inp_text = my_utils.clean_path(inp_text)
+    inp_wav_dir = my_utils.clean_path(inp_wav_dir)
     if (ps1abc == []):
         opt_dir="%s/%s"%(exp_root,exp_name)
         try:
@@ -751,8 +787,9 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                     info1Ba=gr.Textbox(label="SoVITS训练进程输出信息")
                 gr.Markdown(value="1Bb-GPT训练。用于分享的模型文件输出在GPT_weights下。")
                 with gr.Row():
-                    batch_size1Bb = gr.Slider(minimum=1,maximum=40,step=1,label=i18n("每张显卡的batch_size"),value=default_batch_size//2,interactive=True)
-                    total_epoch1Bb = gr.Slider(minimum=2,maximum=100,step=1,label=i18n("总训练轮数total_epoch"),value=15,interactive=True)
+                    batch_size1Bb = gr.Slider(minimum=1,maximum=40,step=1,label=i18n("每张显卡的batch_size"),value=default_batch_size,interactive=True)
+                    total_epoch1Bb = gr.Slider(minimum=2,maximum=50,step=1,label=i18n("总训练轮数total_epoch"),value=15,interactive=True)
+                    if_dpo = gr.Checkbox(label=i18n("是否开启dpo训练选项(实验性)"), value=False, interactive=True, show_label=True)
                     if_save_latest1Bb = gr.Checkbox(label=i18n("是否仅保存最新的ckpt文件以节省硬盘空间"), value=True, interactive=True, show_label=True)
                     if_save_every_weights1Bb = gr.Checkbox(label=i18n("是否在每次保存时间点将最终小模型保存至weights文件夹"), value=True, interactive=True, show_label=True)
                     save_every_epoch1Bb = gr.Slider(minimum=1,maximum=50,step=1,label=i18n("保存频率save_every_epoch"),value=5,interactive=True)
@@ -763,7 +800,7 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                     info1Bb=gr.Textbox(label="GPT训练进程输出信息")
             button1Ba_open.click(open1Ba, [batch_size,total_epoch,exp_name,text_low_lr_rate,if_save_latest,if_save_every_weights,save_every_epoch,gpu_numbers1Ba,pretrained_s2G,pretrained_s2D], [info1Ba,button1Ba_open,button1Ba_close])
             button1Ba_close.click(close1Ba, [], [info1Ba,button1Ba_open,button1Ba_close])
-            button1Bb_open.click(open1Bb, [batch_size1Bb,total_epoch1Bb,exp_name,if_save_latest1Bb,if_save_every_weights1Bb,save_every_epoch1Bb,gpu_numbers1Bb,pretrained_s1],   [info1Bb,button1Bb_open,button1Bb_close])
+            button1Bb_open.click(open1Bb, [batch_size1Bb,total_epoch1Bb,exp_name,if_dpo,if_save_latest1Bb,if_save_every_weights1Bb,save_every_epoch1Bb,gpu_numbers1Bb,pretrained_s1],   [info1Bb,button1Bb_open,button1Bb_close])
             button1Bb_close.click(close1Bb, [], [info1Bb,button1Bb_open,button1Bb_close])
           
         with gr.TabItem("0-前置数据集获取工具"):#提前随机切片防止uvr5爆内存->uvr5->slicer->asr->打标
