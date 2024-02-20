@@ -293,6 +293,18 @@ def set_global(load_json, load_list, json_key_text, json_key_path, batch):
     b_load_file()
 
 
+def remove_long():
+    global g_data_json
+    new_json = []
+    for item in g_data_json:
+        audio_file = item['wav_path']
+        y, sr = librosa.load(audio_file)
+        lenght = librosa.get_duration(y, sr)
+        if lenght <= 15:
+            new_json.append(item)
+    g_data_json = new_json
+    b_save_file()
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--load_json', default="None", help='source file, like demo.json')
@@ -316,6 +328,7 @@ if __name__ == "__main__":
             btn_delete_audio = gr.Button("Delete Audio")
             btn_previous_index = gr.Button("Previous Index")
             btn_next_index = gr.Button("Next Index")
+            btn_remove_long = gr.Button('Remove long')
             
         with gr.Row():
             index_slider = gr.Slider(
@@ -390,6 +403,8 @@ if __name__ == "__main__":
                 *g_checkbox_list
             ],
         )
+
+        btn_remove_long.click(remove_long)
 
         btn_previous_index.click(
             b_previous_index,
