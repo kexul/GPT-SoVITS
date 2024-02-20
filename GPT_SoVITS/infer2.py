@@ -25,7 +25,17 @@ def get_random_ref(list_file, wav_dir):
             return audio_path, i18n('中文'), text, audio_path
         else:
             raise ValueError('Path not exist.')
-    
+
+def save_inp_text(input_path, file_name):
+    with open(file_name, 'wt', encoding='utf-8') as f:
+        f.write(input_path)
+
+def load_inp_text(file_name):
+    if Path(file_name).exists():
+        inp_path = Path(file_name).read_text()
+        return inp_path
+    else:
+        return None
 
 
 with gr.Blocks() as app:
@@ -39,8 +49,8 @@ with gr.Blocks() as app:
     GPT_dropdown.change(change_gpt_weights, [GPT_dropdown], [])
 
     with gr.Row():
-        inp_text = gr.Textbox(label="*文本标注文件",interactive=True)
-        inp_wav_dir = gr.Textbox(label="*训练集音频文件目录",interactive=True)
+        inp_text = gr.Textbox(label="*文本标注文件",interactive=True, value=load_inp_text('inp_text.txt'))
+        inp_wav_dir = gr.Textbox(label="*训练集音频文件目录",interactive=True, value=load_inp_text('inp_wav.txt'))
         random_btn = gr.Button('随机')
 
     with gr.Row():
@@ -49,6 +59,8 @@ with gr.Blocks() as app:
         prompt_language = gr.Textbox(label='语言')
         prompt_text = gr.Textbox(label='文本')
 
+    inp_text.change(save_inp_text, inputs=[inp_text, gr.Text('inp_text.txt')])
+    inp_wav_dir.change(save_inp_text, inputs=[inp_wav_dir, gr.Text('inp_wav.txt')])
     random_btn.click(get_random_ref, inputs=[inp_text, inp_wav_dir],
                                      outputs=[random_audio, prompt_language, prompt_text, inp_ref])
     

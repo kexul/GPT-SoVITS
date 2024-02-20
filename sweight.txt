@@ -1,1 +1,1 @@
-SoVITS_weights/s1_e8_s120.pth
+SoVITS_weights/s1_test_e8_s112.pth

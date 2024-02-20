@@ -323,16 +323,15 @@ if __name__ == "__main__":
     
     with gr.Blocks() as demo:
 
+        btn_remove_long = gr.Button('Remove long')
+
         with gr.Row():
-            btn_change_index = gr.Button("Change Index")
-            btn_submit_change = gr.Button("Submit Text")
-            btn_merge_audio = gr.Button("Merge Audio")
+            btn_change_index = gr.Button("Change Index", visible=False)
+            btn_merge_audio = gr.Button("Merge Audio", visible=False)
             btn_delete_audio = gr.Button("Delete Audio")
             btn_previous_index = gr.Button("Previous Index")
-            btn_next_index = gr.Button("Next Index")
-            btn_remove_long = gr.Button('Remove long')
             
-        with gr.Row():
+        with gr.Row(visible=False):
             index_slider = gr.Slider(
                     minimum=0, maximum=g_max_json_index, value=g_index, step=1, label="Index", scale=3
             )
@@ -370,14 +369,17 @@ if __name__ == "__main__":
 
 
         with gr.Row():
+            btn_submit_change = gr.Button("Submit Text")
+            btn_next_index = gr.Button("Next Index")
+
             batchsize_slider = gr.Slider(
-                    minimum=1, maximum=g_batch, value=g_batch, step=1, label="Batch Size", scale=3, interactive=False
+                    minimum=1, maximum=g_batch, value=g_batch, step=1, label="Batch Size", scale=3, interactive=False, visible=False
             )
             interval_slider = gr.Slider(
-                    minimum=0, maximum=2, value=0, step=0.01, label="Interval", scale=3
+                    minimum=0, maximum=2, value=0, step=0.01, label="Interval", scale=3, visible=False
             )
-            btn_theme_dark = gr.Button("Light Theme", link="?__theme=light", scale=1)
-            btn_theme_light = gr.Button("Dark Theme", link="?__theme=dark", scale=1)
+            btn_theme_dark = gr.Button("Light Theme", link="?__theme=light", scale=1, visible=False)
+            btn_theme_light = gr.Button("Dark Theme", link="?__theme=dark", scale=1, visible=False)
         
         btn_change_index.click(
             b_change_index,
