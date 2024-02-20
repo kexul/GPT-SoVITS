@@ -1,0 +1,1 @@
+SoVITS_weights/s1_e8_s120.pth
