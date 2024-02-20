@@ -1,1 +1,0 @@
-GPT_weights/s1_test-e15.ckpt

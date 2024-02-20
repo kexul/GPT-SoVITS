@@ -1,1 +1,0 @@
-SoVITS_weights/s1_test_e8_s112.pth
