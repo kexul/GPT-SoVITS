@@ -6,11 +6,12 @@
     "configurations": [
         {
             "name": "Python: Current File",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": true,
+            "args": ["/data/tts/sovits/GPT-SoVITS/output/asr_opt/s1.list"]
         }
     ]
 }

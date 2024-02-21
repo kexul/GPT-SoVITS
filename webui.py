@@ -151,7 +151,7 @@ def change_label(if_label,path_list):
     global p_label
     if(if_label==True and p_label==None):
         path_list=my_utils.clean_path(path_list)
-        cmd = '"%s" tools/subfix_webui.py --load_list "%s" --webui_port %s --is_share %s'%(python_exec,path_list,webui_port_subfix,is_share)
+        cmd = '"%s" tools/subfix_webui2.py "%s" '%(python_exec,path_list)
         yield i18n("打标工具WebUI已开启")
         print(cmd)
         p_label = Popen(cmd, shell=True)
