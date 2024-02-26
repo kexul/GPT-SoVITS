@@ -73,7 +73,7 @@ with gr.Blocks() as app:
         random_btn = gr.Button('随机')
 
     with gr.Row():
-        random_audio = gr.Audio(label='音频', autoplay=True, interactive=True)
+        random_audio = gr.Audio(label='音频', autoplay=True, interactive=False, show_download_button=True)
         inp_ref = gr.Textbox(visible=False)
         prompt_language = gr.Textbox(label='语言')
         prompt_text = gr.Textbox(label='文本')

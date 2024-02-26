@@ -93,8 +93,20 @@ def update_status():
     return duration_plot, diff_hltext
 
 
+js = '''
+function disablePropagation(){
+    var textarea = document.querySelector('textarea[data-testid="textbox"]');
+    if (textarea) {
+        textarea.addEventListener('keydown', function(event) {
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.stopPropagation();
+            }
+        });
+    }
+}
+'''
 if __name__ == '__main__':
-    with gr.Blocks() as app:
+    with gr.Blocks(js=js) as app:
         with gr.Tab('Console'):
             au0, text0 = get_line(0)
             audio = gr.Audio(au0, interactive=True, autoplay=True, label='Speech')
